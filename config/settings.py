@@ -19,3 +19,8 @@ MAX_TEXT_LENGTH = 1000
 DEFAULT_EXPERIENCE_YEARS = 0
 
 CACHE_DIR.mkdir(exist_ok=True)
+
+SYNC_ENABLED = True
+RESUME_TOKEN_PATH = Path(".sync_data/resume_token.json")
+SYNC_BATCH_SIZE = 50
+SYNC_RETRY_DELAY = 5  

@@ -1,6 +1,7 @@
 import sys
 import os
 import time
+import logging
 from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
@@ -27,7 +28,7 @@ def test_job_recommendations():
         "candidate_id": "1",
         "headline": "Customer Experience Manager | Customer Success Manager",
         "desired_title": "Training Specialist",
-        "skills": "Customer Success,Client Management, Communication",
+        "skills": " Customer Success,Client Management, Communication",
         "summary": "Customer Success / Customer Experience professional focused on building strong relationships with enterprise clients and driving adoption of AI-powered SaaS products.",
         "experience": "3+ years in customer success and account management in SaaS and B2B environments, working closely with sales and product teams to track usage metrics and improve client outcomes.",
         "location": "Ottawa, Ontario",
@@ -52,7 +53,7 @@ def test_job_recommendations():
     # Display clean results
     print(f"Recommendation Time: {recommendation_time:.3f} seconds")
     print(f"Found {result['total_matches']} total matches")
-    print("\n Top 5 Job Recommendations:")
+    print("\n Top Job Recommendations:")
     
     for i, job in enumerate(result["matches"][:5], 1):
         print(f"{i}. {job['jobTitle']}")

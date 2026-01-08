@@ -1,5 +1,7 @@
 import hashlib
 import logging
+import time
+import subprocess
 from typing import List, Dict, Any, Optional, Tuple
 
 from qdrant_client import QdrantClient
@@ -13,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class QdrantVectorDB:
-    def __init__(self, host: str = "localhost", port: int = 6333, collection_name: str = "job_embeddings"):
+    def __init__(self, host: str = "localhost", port: int = 6333, collection_name: str = "job_embeddings", auto_start: bool = True):
         # Validate inputs
         if not isinstance(host, str) or not host.strip():
             raise ValueError("Host must be a non-empty string")
@@ -24,13 +26,105 @@ class QdrantVectorDB:
         if not re.match(r'^[a-zA-Z0-9_-]+$', collection_name):
             raise ValueError("Invalid collection name")
         
+        self.host = host.strip()
+        self.port = port
+        self.collection_name = collection_name
+        self.vector_size = 1024
+        self.auto_start = auto_start
+        self.client = None
+        self.max_retries = 3
+        
+        self._connect()
+    
+    def _start_qdrant_server(self) -> bool:
+        if not self.auto_start:
+            return False
+        
         try:
-            self.client = QdrantClient(host=host.strip(), port=port)
-            self.collection_name = collection_name
-            self.vector_size = 1024  # BAAI/bge-large-en-v1.5 dimension
+            logger.info("Attempting to start Qdrant server...")
+            
+            result = subprocess.run(
+                ["docker", "ps", "-a", "-q", "-f", "name=qdrant"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            
+            if result.stdout.strip():
+                subprocess.run(["docker", "start", "qdrant"], check=True, timeout=10)
+                logger.info("Started existing Qdrant container")
+            else:
+                subprocess.run([
+                    "docker", "run", "-d",
+                    "--name", "qdrant",
+                    "-p", f"{self.port}:6333",
+                    "-v", "qdrant_storage:/qdrant/storage:z",
+                    "--restart", "unless-stopped",
+                    "qdrant/qdrant:latest"
+                ], check=True, timeout=30)
+                logger.info("Created new Qdrant container")
+            
+            time.sleep(5)
+            return True
+            
+        except subprocess.TimeoutExpired:
+            logger.error("Timeout while starting Qdrant server")
+            return False
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to start Qdrant server: {e}")
+            return False
+        except FileNotFoundError:
+            logger.error("Docker not found. Please install Docker or start Qdrant manually")
+            return False
         except Exception as e:
-            logger.error(f"Qdrant client initialization failed: {e}")
-            raise
+            logger.error(f"Unexpected error starting Qdrant: {e}")
+            return False
+    
+    def _connect(self, retry_count: int = 0) -> bool:
+        try:
+            self.client = QdrantClient(host=self.host, port=self.port, timeout=10)
+            # Test connection
+            self.client.get_collections()
+            logger.info(f"Connected to Qdrant at {self.host}:{self.port}")
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Failed to connect to Qdrant (attempt {retry_count + 1}/{self.max_retries}): {e}")
+            
+            if retry_count < self.max_retries:
+                # Try to start server on first failure
+                if retry_count == 0 and self._start_qdrant_server():
+                    time.sleep(3)
+                    return self._connect(retry_count + 1)
+                
+                # Retry with exponential backoff
+                wait_time = 2 ** retry_count
+                logger.info(f"Retrying in {wait_time} seconds...")
+                time.sleep(wait_time)
+                return self._connect(retry_count + 1)
+            
+            logger.error("Failed to connect to Qdrant after all retries")
+            print("\n" + "="*80)
+            print("QDRANT SERVER NOT RUNNING")
+            print("="*80)
+            print("\nQUICK START:")
+            print("  1. Start Docker Desktop")
+            print("  2. Run: docker run -d -p 6333:6333 --name qdrant qdrant/qdrant:latest")
+            print("  3. Verify: curl http://localhost:6333/health")
+            print("  4. Re-run your application")
+            print("\n" + "="*80 + "\n")
+            raise ConnectionError(f"Cannot connect to Qdrant at {self.host}:{self.port}. Please start Qdrant server.")
+    
+    def _ensure_connection(self):
+        try:
+            if self.client is None:
+                self._connect()
+            else:
+                # Test connection
+                self.client.get_collections()
+        except Exception:
+            logger.warning("Connection lost, attempting to reconnect...")
+            self._connect()
         
     def _job_id_to_point_id(self, job_id: str) -> int:
         try:
@@ -40,6 +134,7 @@ class QdrantVectorDB:
             raise ValueError(f"Invalid job_id format: {job_id}")
     
     def initialize_collection(self):
+        self._ensure_connection()
         try:
             self.client.create_collection(
                 collection_name=self.collection_name,
@@ -50,6 +145,7 @@ class QdrantVectorDB:
             logger.debug(f"Collection {self.collection_name} already exists or creation failed: {e}")
     
     def upsert_job(self, job_id: str, job_data: Dict[str, Any], model: SentenceTransformer):
+        self._ensure_connection()
         if not job_id or not isinstance(job_id, str):
             raise ValueError("job_id must be a non-empty string")
         
@@ -83,6 +179,7 @@ class QdrantVectorDB:
             raise
     
     def bulk_upsert_jobs(self, jobs_df: pd.DataFrame, model: SentenceTransformer, batch_size: int = 50):
+        self._ensure_connection()
         if jobs_df.empty:
             return
         
@@ -126,6 +223,7 @@ class QdrantVectorDB:
     
     def search_similar_jobs(self, query_embedding: List[float], filters: Optional[Dict[str, Any]] = None, 
                            limit: int = 1000) -> List[Dict[str, Any]]:
+        self._ensure_connection()
         
         if limit <= 0 or limit > 10000:
             limit = 1000  # Safe default
@@ -181,6 +279,7 @@ class QdrantVectorDB:
     
     def delete_job(self, job_id: str):
         """Delete job from collection"""
+        self._ensure_connection()
         if not job_id or not isinstance(job_id, str):
             raise ValueError("job_id must be a non-empty string")
         
@@ -195,6 +294,7 @@ class QdrantVectorDB:
     
     def get_collection_info(self) -> Dict[str, Any]:
         """Get collection information"""
+        self._ensure_connection()
         try:
             return self.client.get_collection(self.collection_name)
         except Exception as e:

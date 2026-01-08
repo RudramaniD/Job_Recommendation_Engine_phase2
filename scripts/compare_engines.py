@@ -43,11 +43,11 @@ def compare_faiss_vs_qdrant():
         "job_type": ["FULLTIME"],
     }
     
-    print("🔥 FAISS vs QDRANT PERFORMANCE COMPARISON")
+    print(" FAISS vs QDRANT PERFORMANCE COMPARISON")
     print("=" * 60)
     
     # Test FAISS Engine
-    print("\n🐌 Testing FAISS Engine (Old Implementation)...")
+    print("\nTesting FAISS Engine (Old Implementation)...")
     faiss_engine = JobRecommendationEngine(config)
     
     start_time = time.time()
@@ -59,7 +59,7 @@ def compare_faiss_vs_qdrant():
     print(f"   Top result: {faiss_result['matches'][0]['jobTitle'] if faiss_result['matches'] else 'None'}")
     
     # Test Qdrant Engine
-    print("\n⚡ Testing Qdrant Engine (New Implementation)...")
+    print("\nTesting Qdrant Engine (New Implementation)...")
     qdrant_engine = QdrantRecommendationEngine(config)
     
     start_time = time.time()
@@ -108,11 +108,11 @@ def compare_faiss_vs_qdrant():
     # Recommendation
     print(f"\n🎯 RECOMMENDATION:")
     if improvement > 10:
-        print("✅ MIGRATE TO QDRANT - Significant performance improvement!")
-        print("✅ Production-ready for high-traffic applications")
-        print("✅ Supports real-time job updates")
+        print("MIGRATE TO QDRANT - Significant performance improvement!")
+        print("Production-ready for high-traffic applications")
+        print("Supports real-time job updates")
     else:
-        print("⚠️  Consider keeping FAISS for low-traffic scenarios")
+        print("Consider keeping FAISS for low-traffic scenarios")
     
     return {
         "faiss_time": faiss_time,

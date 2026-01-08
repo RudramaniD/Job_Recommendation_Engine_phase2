@@ -1,4 +1,5 @@
 import pandas as pd
+import logging
 from typing import Dict, List, Any, Optional
 from sentence_transformers import SentenceTransformer
 
@@ -8,6 +9,8 @@ from ..core.layer0_validation import validate_candidate_input
 from ..core.layer1_constraints import apply_layer1_eligibility_filter
 from ..core.text_processing import build_candidate_text
 from ..core.scoring import location_score_fn, title_score_fn, experience_score_fn, jaccard_skill_overlap
+
+logger = logging.getLogger(__name__)
 
 class QdrantRecommendationEngine:
     def __init__(self, config: Dict[str, Any]):
@@ -25,11 +28,9 @@ class QdrantRecommendationEngine:
         return self.model
     
     def initialize_vectordb(self):
-        """Initialize Qdrant collection"""
         self.vectordb.initialize_collection()
     
     def migrate_jobs_to_vectordb(self):
-        """One-time migration: Load all jobs from MongoDB to Qdrant"""
         client = connect_mongo(self.config["MONGO_URI"])
         jobs_df = load_all_active_jobs(client, self.config["DB_NAME"], self.config["JOBS_COLLECTION"])
         
@@ -40,22 +41,34 @@ class QdrantRecommendationEngine:
         self.vectordb.bulk_upsert_jobs(jobs_df, model)
     
     def add_new_job_to_vectordb(self, job_data: Dict[str, Any]):
-        """Real-time: Add new job to Qdrant immediately"""
         model = self.get_embedding_model()
         job_id = str(job_data.get("jobId"))
         self.vectordb.upsert_job(job_id, job_data, model)
+
+    def update_job_in_vectordb(self, job_id: str, job_data: Dict[str, Any]):
+        if not job_data or not isinstance(job_data, dict):
+            raise ValueError("job_data must be a non-empty dictionary")
+
+        if not job_id:
+            raise ValueError("job_id must be provided")
+
+        try:
+            model = self.get_embedding_model()
+            self.vectordb.upsert_job(str(job_id), job_data, model)
+            logger.info(f"Successfully updated job {job_id} in Qdrant Db")
+        except Exception as e:
+            logger.error(f"Failed to update job: {e}")
+            raise
     
     def match_jobs_for_candidate(self, candidate: Dict[str, Any], 
                                 filters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         
         validated_candidate = validate_candidate_input(candidate)
         
-        # Generate candidate embedding
         model = self.get_embedding_model()
         candidate_text = build_candidate_text(validated_candidate)
         candidate_embedding = model.encode([candidate_text], convert_to_numpy=True)[0]
         
-        # Search Qdrant for similar jobs (with native filtering)
         similar_jobs = self.vectordb.search_similar_jobs(
             query_embedding=candidate_embedding.tolist(),
             filters=filters,
@@ -65,16 +78,13 @@ class QdrantRecommendationEngine:
         if not similar_jobs:
             return {"total_matches": 0, "matches": []}
         
-        # Convert to DataFrame for layer 1 filtering
         jobs_df = pd.DataFrame(similar_jobs)
         
-        # Apply layer 1 eligibility constraints
         eligible_jobs_df = apply_layer1_eligibility_filter(jobs_df, validated_candidate)
         
         if eligible_jobs_df.empty:
             return {"total_matches": 0, "matches": []}
         
-        # Calculate final scores
         candidate_skills = validated_candidate.get("skills", "")
         matches = []
         
