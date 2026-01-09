@@ -6,8 +6,19 @@ from pathlib import Path
 
 sys.path.append(str(Path(__file__).parent.parent))
 
+# Suppress all logging
+logging.basicConfig(level=logging.CRITICAL)
+logging.getLogger('httpx').setLevel(logging.CRITICAL)
+logging.getLogger('sentence_transformers').setLevel(logging.CRITICAL)
+logging.getLogger('src').setLevel(logging.CRITICAL)
+
 from src.engine.qdrant_recommendation_engine import QdrantRecommendationEngine
 from config.settings import *
+
+# Suppress tqdm progress bars
+import warnings
+warnings.filterwarnings('ignore')
+os.environ['TQDM_DISABLE'] = '1'
 
 def test_job_recommendations():
     

@@ -5,14 +5,18 @@ from typing import Any
 def clean_html(raw_html: str) -> str:
     if not isinstance(raw_html, str):
         return ""
-    # Limit input size to prevent DoS
+    
     if len(raw_html) > 10000:
         raw_html = raw_html[:10000]
     
     text = html.unescape(raw_html)
-    text = re.sub(r"<[^>]+>", " ", text)
-    text = re.sub(r"\s+", " ", text).strip()
-    return text[:500]
+
+    text = re.sub(r'<[^>]+>', ' ', text)
+    
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text[:500] if len(text) > 500 else text
+
 
 def list_to_str(value: Any) -> str:
     if isinstance(value, list):
@@ -64,7 +68,12 @@ def build_candidate_text(candidate) -> str:
 
     headline = str(get_func("headline", ""))
     desired_title = str(get_func("desired_title", get_func("jobTitle", "")))
-    skills = str(get_func("skills", ""))
+    skills_raw = get_func("skills", "")
+    if isinstance(skills_raw, list):
+        skills = ", ".join(str(s) for s in skills_raw)
+    else:
+        skills = str(skills_raw)
+
     summary = str(get_func("summary", get_func("professionalSummary", "")))
     experience = str(get_func("experience", ""))
     city = str(get_func("city", ""))

@@ -1,7 +1,7 @@
 import json
 import logging
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ class ResumeTokenManager:
         try:
             data = {
                 "resume_token": token,
-                "last_updated": datetime.utcnow().isoformat(),
+                "last_updated": datetime.now(timezone.utc).isoformat(),
                 "events_processed": events_processed
             }
 
