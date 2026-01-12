@@ -8,7 +8,7 @@ from ..database.qdrant_client import QdrantVectorDB
 from ..core.layer0_validation import validate_candidate_input
 from ..core.layer1_constraints import apply_layer1_eligibility_filter
 from ..core.text_processing import build_candidate_text
-from ..core.scoring import location_score_fn, title_score_fn, experience_score_fn, jaccard_skill_overlap
+from ..core.scoring import location_score_fn, title_score_fn, experience_score_fn, jaccard_skill_overlap, check_role_affinity
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +86,9 @@ class QdrantRecommendationEngine:
             return {"total_matches": 0, "matches": []}
         
         candidate_skills = validated_candidate.get("skills", "")
+        candidate_title = validated_candidate.get("desired_title", 
+                            validated_candidate.get("jobTitle", 
+                                validated_candidate.get("headline", "")))
         matches = []
         
         for _, job_row in eligible_jobs_df.iterrows():
@@ -98,12 +101,8 @@ class QdrantRecommendationEngine:
                 job_row.get("country"),
             )
             
-            title_score = title_score_fn(
-                validated_candidate.get("desired_title", 
-                    validated_candidate.get("jobTitle", 
-                        validated_candidate.get("headline", ""))),
-                job_row.get("jobTitle", ""),
-            )
+            job_title = job_row.get("jobTitle", "")
+            title_score = title_score_fn(candidate_title, job_title)
             
             exp_score = experience_score_fn(
                 validated_candidate.get("experience", ""),
@@ -113,6 +112,8 @@ class QdrantRecommendationEngine:
             skill_score = jaccard_skill_overlap(candidate_skills, job_row.get("skills", []))
             semantic_score = float(job_row.get("semantic_score", 0.0))
             
+            role_affinity = check_role_affinity(candidate_title, job_title)
+            
             final_score = (
                 0.4 * loc_score
                 + 0.3 * title_score
@@ -121,9 +122,15 @@ class QdrantRecommendationEngine:
                 + 0.05 * semantic_score
             )
             
+            if skill_score == 0.0:
+                final_score = final_score * 0.5
+            
+            if role_affinity < 0.5:
+                final_score = final_score * 0.3
+            
             matches.append({
                 "jobId": job_row.get("jobId"),
-                "jobTitle": job_row.get("jobTitle", ""),
+                "jobTitle": job_title,
                 "city": job_row.get("city", ""),
                 "province": job_row.get("province", ""),
                 "country": job_row.get("country", ""),

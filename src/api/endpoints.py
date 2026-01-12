@@ -68,13 +68,13 @@ async def health_check():
 @app.post("/api/v1/recommendations", response_model=RecommendationResponse)
 async def get_recommendations(request: RecommendationRequest):
     try:
-        candidate_dict = request.candidate.dict(exclude_none=True)
+        candidate_dict = request.data.dict(exclude_none=True)
         
         filters_dict = None
         if request.filters:
             filters_dict = request.filters.dict(exclude_none=True)
-        elif request.candidate.jobPreferences:
-            prefs = request.candidate.jobPreferences
+        elif request.data.jobPreferences:
+            prefs = request.data.jobPreferences
             filters_dict = {}
             if prefs.workSetting:
                 # Normalize to uppercase to match MongoDB format

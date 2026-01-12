@@ -27,7 +27,7 @@ def check_skills_eligibility(candidate_skills: List[str], job_required_skills: L
         return True, "no_skill_requirements"
     
     if not candidate_skills:
-        return False, "no_candidate_skills_but_required"
+        return True, "no_candidate_skills_pass_to_scoring"
     
     try:
         cand_skills_set = {s.lower().strip() for s in candidate_skills if s}
@@ -41,7 +41,7 @@ def check_skills_eligibility(candidate_skills: List[str], job_required_skills: L
         if matches > 0:
             return True, f"has_required_skills_{matches}_matches"
         else:
-            return False, f"no_required_skill_overlap"
+            return True, f"no_skill_overlap_pass_to_scoring"
         
     except Exception:
         return True, "skills_check_error"
@@ -84,14 +84,11 @@ def apply_layer1_eligibility_filter(jobs_df: pd.DataFrame, candidate: Dict[str, 
         if not location_eligible:
             eligible = False
             rejection_reasons.append(f"location:{location_reason}")
-
-        skills_eligible, skills_reason = check_skills_eligibility(
-            candidate.get('skills'),
-            job_dict.get('skills')
-        )
-        if not skills_eligible:
+        
+        semantic_score = float(job_dict.get('semantic_score', 0.0))
+        if semantic_score < 0.55:
             eligible = False
-            rejection_reasons.append(f"skills:{skills_reason}")
+            rejection_reasons.append(f"semantic:below_threshold_{semantic_score:.3f}")
 
         if eligible:
             eligible_jobs.append(job_dict)

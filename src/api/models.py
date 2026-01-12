@@ -45,7 +45,7 @@ class FiltersRequest(BaseModel):
 
 
 class RecommendationRequest(BaseModel):
-    candidate: CandidatePayload
+    data: CandidatePayload
     filters: Optional[FiltersRequest] = None
     top_k: Optional[int] = 10
 
